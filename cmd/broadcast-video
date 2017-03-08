@@ -1,0 +1,179 @@
+#!/usr/bin/env node
+
+const path = require('path');
+const program = require('commander');
+const fs = require('fs');
+const request = require('request');
+const spawn = require('child_process').spawn;
+const files = process.argv.slice(2);
+const config = require('../src/config');
+const livelyChatroom = require('../src/chatroom');
+
+const ORIGIN = `rtmp://ids6-ls-dev.livelyvideo.tv/origin`;
+
+program
+	.usage('--files 1.mp4, 2.mp4 ...')
+	.version('0.0.1')
+	.option('-f, --files [string]', 'Files to broadcast', (s) => {
+		return s.split(',').map((x) => {
+			return x.trim();
+		});
+	})
+	.parse(process.argv);
+
+if (!program.files || !program.files.length) {
+	console.error('files required');
+	process.exit(1);
+	return;
+}
+
+/* helper function to run spawn commands */
+function runCmd(cmd, args, cb) {
+	const cmdRef = spawn(cmd, args);
+	let err = '';
+	let out = '';
+
+	cmdRef.stderr.on('data', (data) => {
+		err += data.toString();
+	});
+
+	cmdRef.stdout.on('data', (data) => {
+		out += data.toString();
+	});
+
+	cmdRef.on('close', (code) => {
+		if (code) {
+			cb(new Error(`cmd failed ${cmd} ${args.join(' ')} ${err}`));
+		} else {
+			cb(null, out);
+		}
+	});
+}
+
+/* gets an access key for a file.  considers the file a user in this case */
+function getAccessKey(file, cb) {
+	request({
+		method: 'GET',
+		uri: `https://${config.subdomain}.livelyvideo.tv/api/ls/v1/key/${path.basename(file).replace(/\s/, '_')}`,
+		headers: {
+			Authorization: `Bearer ${config.token}`
+		},
+		json: true
+	}, (err, response, body) => {
+		if (err) {
+			cb(err);
+			return;
+		}
+
+		if (response.statusCode > 399) {
+			cb(new Error(`unexpected status code getting key ${response.statusCode}`));
+			return;
+		}
+
+		cb(null, body.results.pvtKey);
+	});
+}
+
+/* broadcast a single file (any media stream) */
+function broadcast(file, cb) {
+	getAccessKey(file, (err, key) => {
+		if (err) {
+			cb && cb(err);
+			return
+		}
+
+		const rtmpUrl = `${ORIGIN}/${key}`;
+		console.info('starting stream', file);
+		// for codecs, we support several - ideall
+		runCmd('ffmpeg', ['-i', file, '-vcodec', 'copy', '-acodec', 'copy', '-f', 'flv', rtmpUrl], (err, result) => {
+			console.info('stream over', file);
+
+			// restart?
+			broadcast(file);
+		});
+		cb && cb();
+	});
+}
+
+/* iteratively broadcasts each file */
+function broadcastAll(files, cb, index) {
+	index = index || 0;
+
+	if (index >= files.length) {
+		cb();
+		return;
+	}
+
+	const file = files[index];
+	const room = path.basename(file);
+	console.info('retrieving access token', file);
+
+	livelyChatroom.createRoomIfNotExists(room, room, (err) => {
+		if (err) {
+			console.error(`failed to create chatroom for ${room}`);
+		} else {
+			console.info(`chatroom for ${room} exists`);
+		}
+
+		broadcast(file, () => {
+			broadcastAll(files, cb, index + 1)
+		});
+	});
+}
+
+/* iteratively checks each file to make sure its a video that can be streamed */
+function check(files, cb, index) {
+	index = index || 0;
+
+	if (index >= files.length) {
+		cb();
+		return;
+	}
+
+	const file = files[index];
+
+	console.info('checking', file);
+	runCmd('ffprobe', [file, '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams'], (err, result) => {
+		if (err) {
+			cb(err);
+			return;
+		}
+
+		try {
+			const streamInfo = JSON.parse(result);
+
+			// if (!parseFloat(streamInfo.format.duration)) {
+			// 	cb(new Error(`${file} is missing duration`))
+			// 	return;
+			// }
+
+			if (!streamInfo.streams || !streamInfo.streams.length) {
+				cb(new Error(`${file} is missing streams`));
+				return;
+			}
+
+			check(files, cb, index + 1);
+		} catch(err) {
+			cb(err);
+		}
+	});
+}
+
+// main
+function main(files) {
+	check(files, (err) => {
+		if (err) {
+			console.error(err);
+			process.exit(1);
+		}
+
+		broadcastAll(files, (err) => {
+			if (err) {
+				console.error(err);
+				process.exit(1);
+			}
+			console.info('now broadcasting');
+		});
+	});
+}
+main(program.files);

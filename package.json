@@ -1,0 +1,47 @@
+{
+  "name": "sandbox-vodtolive-example",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development webpack-dev-server --inline --hot --progress",
+    "libs": "cp node_modules/hls.js/dist/hls.* dist/libs/hlsjs/ && cp node_modules/@livelyvideo/stock-live-player/dist/thin* dist/libs/thinflash/",
+    "start": "node src/server.js",
+    "build": "cross-env NODE_ENV=production webpack -p --progress",
+    "prebuild": "npm run libs"
+  },
+  "dependencies": {
+    "commander": "^2.9.0",
+    "express": "^4.14.0",
+    "express-http-proxy": "^0.11.0",
+    "moment": "^2.17.1",
+    "request": "^2.80.0",
+    "whatwg-fetch": "^2.0.3"
+  },
+  "devDependencies": {
+    "@livelyvideo/chat": "^1.0.10",
+    "@livelyvideo/stock-live-player": "^1.0.1-beta.1",
+    "autoprefixer": "^6.7.3",
+    "babel": "^6.23.0",
+    "babel-core": "^6.23.1",
+    "babel-eslint": "^7.1.1",
+    "babel-loader": "^6.3.2",
+    "babel-plugin-transform-decorators-legacy": "^1.3.4",
+    "babel-preset-es2015": "^6.22.0",
+    "babel-preset-stage-0": "^6.22.0",
+    "babel-register": "^6.23.0",
+    "babel-runtime": "^6.23.0",
+    "copy-webpack-plugin": "^4.0.1",
+    "cross-env": "^3.1.4",
+    "extract-text-webpack-plugin": "^1.0.1",
+    "hls.js": "^0.6.21",
+    "html-webpack-plugin": "^2.28.0",
+    "ncp": "^2.0.0",
+    "replace-bundle-webpack-plugin": "^1.0.0",
+    "uglify": "^0.1.5",
+    "uglifyjs": "^2.4.10",
+    "v8-lazy-parse-webpack-plugin": "^0.3.0",
+    "webpack": "^2.2.1",
+    "webpack-dev-server": "^2.3.0",
+    "whatwg-fetch": "^2.0.2"
+  }
+}
